@@ -115,4 +115,5 @@ ENV PATH="${XUANTIE_PREFIX}/bin:${PATH}"
 
 WORKDIR /workspace
 
-ENTRYPOINT ["/bin/bash"]
+ENTRYPOINT ["/bin/bash", "-l"]
+CMD ["-i"]
