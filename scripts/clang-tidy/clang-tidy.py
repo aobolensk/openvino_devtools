@@ -63,7 +63,8 @@ class ClangTidyBuilder:
                  architectures: List[str] = None,
                  target: str = 'openvino_intel_cpu_plugin',
                  jobs: int = None,
-                 verbose: bool = False):
+                 verbose: bool = False,
+                 fix: bool = False):
         """
         Initialize the builder.
 
@@ -75,6 +76,7 @@ class ClangTidyBuilder:
             target: CMake target to build
             jobs: Number of parallel jobs (default: nproc - 1)
             verbose: Enable verbose logging
+            fix: Enable clang-tidy automatic fixes
         """
         self.openvino_repo = Path(openvino_repo).resolve()
         self.build_root = Path(build_root) if build_root else Path.cwd() / 'build'
@@ -83,6 +85,7 @@ class ClangTidyBuilder:
         self.target = target
         self.jobs = jobs
         self.verbose = verbose
+        self.fix = fix
 
         # Validate inputs
         if not self.openvino_repo.exists():
@@ -452,6 +455,9 @@ class ClangTidyBuilder:
             '-DCMAKE_CXX_COMPILER_LAUNCHER=ccache',
         ]
 
+        # Add clang-tidy fix flag
+        cmake_args.append(f'-DENABLE_CLANG_TIDY_FIX={"ON" if self.fix else "OFF"}')
+
         # Add architecture-specific CMake arguments
         cmake_args.extend(arch_config['cmake_args'])
 
@@ -700,6 +706,12 @@ Examples:
         help='Enable verbose output'
     )
 
+    parser.add_argument(
+        '--fix',
+        action='store_true',
+        help='Enable clang-tidy automatic fixes (adds -DENABLE_CLANG_TIDY_FIX=ON)'
+    )
+
     args = parser.parse_args()
 
     try:
@@ -710,7 +722,8 @@ Examples:
             architectures=args.architectures,
             target=args.target,
             jobs=args.jobs,
-            verbose=args.verbose
+            verbose=args.verbose,
+            fix=args.fix,
         )
 
         success = builder.build_all()
