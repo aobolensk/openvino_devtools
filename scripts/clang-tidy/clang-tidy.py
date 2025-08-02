@@ -22,7 +22,7 @@ from typing import Dict, List, Optional, Tuple
 
 class ClangTidyBuilder:
     """Manages clang-tidy builds for multiple architectures."""
-    
+
     ARCHITECTURES = {
         'x64': {
             'cmake_args': [
@@ -53,10 +53,10 @@ class ClangTidyBuilder:
             'docker_platform': 'linux/amd64',  # Cross-compile from x64
         }
     }
-    
+
     DEFAULT_DOCKER_IMAGE = 'ghcr.io/aobolensk/openvino_devutils/ubuntu:latest'
-    
-    def __init__(self, 
+
+    def __init__(self,
                  openvino_repo: str,
                  build_root: str = None,
                  docker_image: str = None,
@@ -66,7 +66,7 @@ class ClangTidyBuilder:
                  verbose: bool = False):
         """
         Initialize the builder.
-        
+
         Args:
             openvino_repo: Path to OpenVINO repository
             build_root: Root directory for build outputs (default: temp dir)
@@ -83,15 +83,15 @@ class ClangTidyBuilder:
         self.target = target
         self.jobs = jobs
         self.verbose = verbose
-        
+
         # Validate inputs
         if not self.openvino_repo.exists():
             raise ValueError(f"OpenVINO repository not found: {self.openvino_repo}")
-        
+
         invalid_archs = set(self.architectures) - set(self.ARCHITECTURES.keys())
         if invalid_archs:
             raise ValueError(f"Invalid architectures: {invalid_archs}")
-        
+
         # Setup logging
         log_level = logging.DEBUG if verbose else logging.INFO
         logging.basicConfig(
@@ -100,10 +100,11 @@ class ClangTidyBuilder:
             datefmt='%H:%M:%S'
         )
         self.logger = logging.getLogger(__name__)
-        
-        # Create build directories
+
+        # Create build and ccache directories
         self.build_root.mkdir(parents=True, exist_ok=True)
-        
+        (self.build_root / '.ccache').mkdir(parents=True, exist_ok=True)
+
         self.logger.info(f"OpenVINO repository: {self.openvino_repo}")
         self.logger.info(f"Build root: {self.build_root}")
         self.logger.info(f"Docker image: {self.docker_image}")
@@ -113,20 +114,20 @@ class ClangTidyBuilder:
     def _run_command(self, cmd: List[str], cwd: Path = None, env: Dict[str, str] = None, stream_output: bool = False) -> Tuple[int, str, str]:
         """
         Run a command and return exit code, stdout, stderr.
-        
+
         Args:
             cmd: Command and arguments
             cwd: Working directory
             env: Environment variables
             stream_output: If True, stream output in real-time instead of capturing
-            
+
         Returns:
             Tuple of (exit_code, stdout, stderr)
         """
         self.logger.debug(f"Running: {' '.join(cmd)}")
         if cwd:
             self.logger.debug(f"Working directory: {cwd}")
-        
+
         try:
             if stream_output:
                 # Stream output in real-time using subprocess with optimized settings
@@ -141,10 +142,10 @@ class ClangTidyBuilder:
                     bufsize=0,  # Unbuffered
                     universal_newlines=True
                 )
-                
+
                 stdout_lines = []
                 build_progress = {'completed': 0, 'total': 0, 'current_file': ''}
-                
+
                 # Use real-time line reading with immediate output
                 while True:
                     line = process.stdout.readline()
@@ -153,21 +154,21 @@ class ClangTidyBuilder:
                     if line:
                         line = line.rstrip()
                         stdout_lines.append(line)
-                        
+
                         # Parse and display meaningful progress information
                         progress_info = self._parse_build_progress(line, build_progress)
                         if progress_info:
                             print(f"{progress_info}", flush=True)
                         elif not self._is_noise_output(line):
                             print(f"[BUILD] {line}", flush=True)
-                        
+
                         # Force immediate flush of stdout
                         sys.stdout.flush()
-                
+
                 process.wait()
                 stdout = '\n'.join(stdout_lines)
                 stderr = ""  # Combined with stdout
-                
+
                 return process.returncode, stdout, stderr
             else:
                 # Original behavior - capture output
@@ -179,15 +180,15 @@ class ClangTidyBuilder:
                     text=True,
                     timeout=7200  # 2 hour timeout
                 )
-                
+
                 if self.verbose and result.stdout:
                     self.logger.debug(f"STDOUT:\n{result.stdout}")
                 if result.stderr:
                     level = logging.DEBUG if result.returncode == 0 else logging.WARNING
                     self.logger.log(level, f"STDERR:\n{result.stderr}")
-                    
+
                 return result.returncode, result.stdout, result.stderr
-            
+
         except subprocess.TimeoutExpired:
             self.logger.error("Command timed out after 2 hours")
             return 124, "", "Command timed out"
@@ -198,11 +199,11 @@ class ClangTidyBuilder:
     def _parse_build_progress(self, output: str, progress_state: Dict) -> Optional[str]:
         """
         Parse build output to extract meaningful progress information.
-        
+
         Args:
             output: Single line of build output
             progress_state: Dictionary to maintain progress state
-            
+
         Returns:
             Formatted progress string or None if no progress info found
         """
@@ -213,9 +214,9 @@ class ClangTidyBuilder:
             total = int(ninja_match.group(2))
             progress_state['completed'] = current
             progress_state['total'] = total
-            
+
             percentage = (current / total) * 100 if total > 0 else 0
-            
+
             # Extract what's being compiled/linked
             if 'Building CXX object' in output:
                 # Try multiple patterns to extract filename
@@ -229,11 +230,11 @@ class ClangTidyBuilder:
                     if file_match:
                         filename = file_match.group(1)
                         break
-                
+
                 if filename:
                     progress_state['current_file'] = filename
                     return f"[{percentage:5.1f}%] ({current:4d}/{total:4d}) Compiling {filename}"
-                    
+
             elif 'Linking CXX' in output:
                 # Try multiple patterns to extract target name
                 link_patterns = [
@@ -247,10 +248,10 @@ class ClangTidyBuilder:
                     if target_match:
                         target = target_match.group(1)
                         break
-                
+
                 if target:
                     return f"[{percentage:5.1f}%] ({current:4d}/{total:4d}) Linking {target}"
-                    
+
             elif 'Building C object' in output:
                 # Try multiple patterns to extract C filename
                 file_patterns = [
@@ -263,13 +264,13 @@ class ClangTidyBuilder:
                     if file_match:
                         filename = file_match.group(1)
                         break
-                
+
                 if filename:
                     progress_state['current_file'] = filename
                     return f"[{percentage:5.1f}%] ({current:4d}/{total:4d}) Compiling {filename}"
             else:
                 return f"[{percentage:5.1f}%] ({current:4d}/{total:4d}) Building..."
-        
+
         # Parse clang-tidy messages
         if 'clang-tidy' in output and ('warning:' in output or 'error:' in output):
             file_match = re.search(r'([^/\s]+\.(cpp|c|h|hpp)):(\d+):', output)
@@ -280,16 +281,16 @@ class ClangTidyBuilder:
                     return f"[TIDY] Warning in {filename}:{line_num}"
                 elif 'error:' in output:
                     return f"[TIDY] Error in {filename}:{line_num}"
-        
+
         return None
 
     def _is_noise_output(self, output: str) -> bool:
         """
         Check if the output line is noise that should be filtered out.
-        
+
         Args:
             output: Single line of build output
-            
+
         Returns:
             True if the line should be filtered out
         """
@@ -306,49 +307,49 @@ class ClangTidyBuilder:
             r'^ninja: Entering directory',
             r'^\s*$',  # Empty lines
         ]
-        
+
         for pattern in noise_patterns:
             if re.match(pattern, output):
                 return True
-                
+
         return False
 
     def _check_docker(self) -> bool:
         """Check if Docker is available and build/pull image as needed."""
         self.logger.info("Checking Docker availability...")
-        
+
         # Check if docker command exists
         exit_code, _, _ = self._run_command(['docker', '--version'])
         if exit_code != 0:
             self.logger.error("Docker is not available or not installed")
             return False
-        
+
         # Check if image exists locally
         exit_code, _, _ = self._run_command(['docker', 'inspect', self.docker_image])
         if exit_code == 0:
             self.logger.info(f"Docker image {self.docker_image} found locally")
             return True
-        
+
         # Try to pull the image first
         self.logger.info(f"Pulling Docker image: {self.docker_image}")
         exit_code, _, stderr = self._run_command(['docker', 'pull', self.docker_image])
         if exit_code == 0:
             return True
-        
+
         # If pull failed, try to build locally from Dockerfile
         self.logger.warning(f"Failed to pull image: {stderr}")
         return self._build_docker_image()
-    
+
     def _build_docker_image(self) -> bool:
         """Build Docker image locally from the provided Dockerfile."""
         dockerfile_path = Path(__file__).parent.parent.parent / 'docker' / 'ubuntu.Dockerfile'
-        
+
         if not dockerfile_path.exists():
             self.logger.error(f"Dockerfile not found: {dockerfile_path}")
             return False
-        
+
         self.logger.info(f"Building Docker image locally from {dockerfile_path}")
-        
+
         # Determine the correct sccache architecture
         import platform
         machine = platform.machine()
@@ -356,7 +357,7 @@ class ClangTidyBuilder:
             sccache_arch = 'aarch64-unknown-linux-musl'
         else:
             sccache_arch = 'x86_64-unknown-linux-musl'
-        
+
         build_cmd = [
             'docker', 'build',
             '--build-arg', f'SCCACHE_ARCH={sccache_arch}',
@@ -364,39 +365,39 @@ class ClangTidyBuilder:
             '-t', self.docker_image,
             str(dockerfile_path.parent)
         ]
-        
+
         exit_code, _, stderr = self._run_command(build_cmd)
-        
+
         if exit_code != 0:
             self.logger.error(f"Failed to build Docker image: {stderr}")
             return False
-        
+
         self.logger.info("Docker image built successfully")
         return True
 
     def _get_docker_run_cmd(self, arch: str, mount_paths: Dict[str, str]) -> List[str]:
         """
         Generate docker run command for the given architecture.
-        
+
         Args:
             arch: Target architecture
             mount_paths: Dictionary of host_path -> container_path mappings
-            
+
         Returns:
             Docker run command as list
         """
         arch_config = self.ARCHITECTURES[arch]
-        
+
         cmd = [
             'docker', 'run', '--rm', '-i',
             '--platform', arch_config['docker_platform'],
             '--workdir', '/workspace',
         ]
-        
+
         # Add volume mounts
         for host_path, container_path in mount_paths.items():
             cmd.extend(['-v', f'{host_path}:{container_path}'])
-        
+
         # Set environment variables
         env_vars = {
             'DEBIAN_FRONTEND': 'noninteractive',
@@ -409,31 +410,31 @@ class ClangTidyBuilder:
             'PYTHONUNBUFFERED': '1',  # Force unbuffered Python output
             'TERM': 'xterm-256color',  # Better terminal support
         }
-        
+
         if arch == 'riscv64':
             env_vars['RISCV_TOOLCHAIN_ROOT'] = '/opt/riscv'
-        
+
         for key, value in env_vars.items():
             cmd.extend(['-e', f'{key}={value}'])
-        
+
         cmd.append(self.docker_image)
-        
+
         return cmd
 
     def _configure_cmake(self, arch: str) -> bool:
         """
         Configure CMake for the given architecture.
-        
+
         Args:
             arch: Target architecture
-            
+
         Returns:
             True if configuration succeeded
         """
         self.logger.info(f"Configuring CMake for {arch}...")
-        
+
         arch_config = self.ARCHITECTURES[arch]
-        
+
         cmake_args = [
             'cmake',
             '-G', 'Ninja Multi-Config',
@@ -450,56 +451,57 @@ class ClangTidyBuilder:
             '-DCMAKE_C_COMPILER_LAUNCHER=ccache',
             '-DCMAKE_CXX_COMPILER_LAUNCHER=ccache',
         ]
-        
+
         # Add architecture-specific CMake arguments
         cmake_args.extend(arch_config['cmake_args'])
-        
+
         # Add toolchain file if specified
         if arch_config['toolchain']:
             cmake_args.extend([f'-DCMAKE_TOOLCHAIN_FILE=/workspace/openvino/{arch_config["toolchain"]}'])
-        
+
         # Add source and build directories (using container paths)
         cmake_args.extend(['-S', '/workspace/openvino', '-B', f'/workspace/build/build_{arch}'])
-        
+
         # Prepare Docker command
         mount_paths = {
             str(self.openvino_repo): '/workspace/openvino',
             str(self.build_root.resolve()): '/workspace/build',
+            str(self.build_root.resolve() / '.ccache'): '/workspace/.ccache',  # Share ccache from host
         }
-        
+
         docker_cmd = self._get_docker_run_cmd(arch, mount_paths)
         # Use -c to pass the commands - first install scons, then run cmake
         cmake_cmd_str = ' '.join(f'"{arg}"' if ' ' in arg else arg for arg in cmake_args)
         # Use stdbuf for configuration phase too - silence apt output for cleaner display
-        combined_cmd = f'apt update >/dev/null 2>&1 && apt install -y scons >/dev/null 2>&1 && stdbuf -oL -eL {cmake_cmd_str}'
+        combined_cmd = f'stdbuf -oL -eL {cmake_cmd_str}'
         docker_cmd.extend(['-c', combined_cmd])
-        
+
         exit_code, _, stderr = self._run_command(docker_cmd, stream_output=True)
-        
+
         if exit_code != 0:
             self.logger.error(f"CMake configuration failed for {arch}")
             self.logger.error(f"Exit code: {exit_code}")
             if stderr:
                 self.logger.error(f"Error output:\n{stderr}")
             return False
-        
+
         self.logger.info(f"CMake configuration completed for {arch}")
         return True
 
     def _build_target(self, arch: str) -> bool:
         """
         Build the target for the given architecture.
-        
+
         Args:
             arch: Target architecture
-            
+
         Returns:
             True if build succeeded
         """
         self.logger.info(f"Building {self.target} for {arch}...")
-        
+
         arch_config = self.ARCHITECTURES[arch]
-        
+
         # Determine number of parallel jobs
         if self.jobs:
             parallel_jobs = self.jobs
@@ -510,7 +512,7 @@ class ClangTidyBuilder:
                 parallel_jobs = max(1, nproc - 1)
             except:
                 parallel_jobs = 4  # fallback
-        
+
         cmake_build_args = [
             'cmake',
             '--build', f'/workspace/build/build_{arch}',
@@ -521,46 +523,48 @@ class ClangTidyBuilder:
             '--',  # Pass remaining args to underlying build tool
             '-k', '0'  # Keep going on errors, stop after 0 failures (i.e., keep going)
         ]
-        
+
         # Prepare Docker command
         mount_paths = {
             str(self.openvino_repo): '/workspace/openvino',
             str(self.build_root.resolve()): '/workspace/build',
+            str(self.build_root.resolve() / '.ccache'): '/workspace/.ccache',  # Share ccache from host
         }
-        
+
         docker_cmd = self._get_docker_run_cmd(arch, mount_paths)
         # Use -c to pass the commands - first install scons, then run cmake build with unbuffered output
         cmake_cmd_str = ' '.join(f'"{arg}"' if ' ' in arg else arg for arg in cmake_build_args)
         # Use stdbuf to force line buffering - this is key for real-time streaming
         combined_cmd = f'apt update >/dev/null 2>&1 && apt install -y scons >/dev/null 2>&1 && stdbuf -oL -eL {cmake_cmd_str}'
         docker_cmd.extend(['-c', combined_cmd])
-        
+
         self.logger.info(f"Starting build with real-time progress for {arch}...")
         exit_code, stdout, stderr = self._run_command(docker_cmd, stream_output=True)
-        
+
         if exit_code != 0:
             self.logger.error(f"Build failed for {arch}")
             self.logger.error(f"Exit code: {exit_code}")
             if stderr:
                 self.logger.error(f"Error output:\n{stderr}")
             return False
-        
+
         self.logger.info(f"Build completed successfully for {arch}")
         return True
 
     def _show_ccache_stats(self, arch: str) -> None:
         """Show ccache statistics for the given architecture."""
         self.logger.info(f"Showing ccache stats for {arch}...")
-        
+
         mount_paths = {
             str(self.build_root.resolve()): '/workspace/build',
+            str(self.build_root.resolve() / '.ccache'): '/workspace/.ccache',  # Share ccache from host
         }
-        
+
         docker_cmd = self._get_docker_run_cmd(arch, mount_paths)
         docker_cmd.extend(['-c', 'ccache --show-stats'])
-        
+
         exit_code, stdout, _ = self._run_command(docker_cmd)
-        
+
         if exit_code == 0 and stdout:
             self.logger.info(f"Ccache stats for {arch}:\n{stdout}")
         else:
@@ -569,45 +573,45 @@ class ClangTidyBuilder:
     def build_architecture(self, arch: str) -> bool:
         """
         Build for a single architecture.
-        
+
         Args:
             arch: Architecture to build
-            
+
         Returns:
             True if build succeeded
         """
         self.logger.info(f"Starting build for architecture: {arch}")
-        
+
         build_dir = self.build_root / f"build_{arch}"
         build_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Configure CMake
         if not self._configure_cmake(arch):
             return False
-        
+
         # Build target
         if not self._build_target(arch):
             return False
-        
+
         # Show ccache stats
         self._show_ccache_stats(arch)
-        
+
         self.logger.info(f"Successfully completed build for {arch}")
         return True
 
     def build_all(self) -> bool:
         """
         Build for all configured architectures.
-        
+
         Returns:
             True if all builds succeeded
         """
         if not self._check_docker():
             return False
-        
+
         success_count = 0
         failed_architectures = []
-        
+
         for arch in self.architectures:
             try:
                 if self.build_architecture(arch):
@@ -617,15 +621,15 @@ class ClangTidyBuilder:
             except Exception as e:
                 self.logger.error(f"Unexpected error building {arch}: {e}")
                 failed_architectures.append(arch)
-        
+
         # Summary
         total_archs = len(self.architectures)
         self.logger.info(f"Build summary: {success_count}/{total_archs} architectures succeeded")
-        
+
         if failed_architectures:
             self.logger.error(f"Failed architectures: {', '.join(failed_architectures)}")
             return False
-        
+
         self.logger.info("All builds completed successfully!")
         return True
 
@@ -650,12 +654,12 @@ Examples:
   %(prog)s /path/to/openvino --verbose --target openvino_intel_cpu_plugin
         """
     )
-    
+
     parser.add_argument(
         'openvino_repo',
         help='Path to OpenVINO repository'
     )
-    
+
     parser.add_argument(
         '--arch', '--architecture',
         dest='architectures',
@@ -664,40 +668,40 @@ Examples:
         default=['x64', 'arm64', 'riscv64'],
         help='Architectures to build (default: all)'
     )
-    
+
     parser.add_argument(
         '--build-dir',
         dest='build_dir',
         help='Root directory for build outputs (default: ./build)'
     )
-    
+
     parser.add_argument(
         '--docker-image',
         dest='docker_image',
         default=ClangTidyBuilder.DEFAULT_DOCKER_IMAGE,
         help=f'Docker image to use (default: {ClangTidyBuilder.DEFAULT_DOCKER_IMAGE})'
     )
-    
+
     parser.add_argument(
         '--target',
         default='openvino_intel_cpu_plugin',
         help='CMake target to build (default: openvino_intel_cpu_plugin)'
     )
-    
+
     parser.add_argument(
         '--jobs', '-j',
         type=int,
         help='Number of parallel jobs (default: nproc - 1)'
     )
-    
+
     parser.add_argument(
         '--verbose', '-v',
         action='store_true',
         help='Enable verbose output'
     )
-    
+
     args = parser.parse_args()
-    
+
     try:
         builder = ClangTidyBuilder(
             openvino_repo=args.openvino_repo,
@@ -708,10 +712,10 @@ Examples:
             jobs=args.jobs,
             verbose=args.verbose
         )
-        
+
         success = builder.build_all()
         sys.exit(0 if success else 1)
-        
+
     except KeyboardInterrupt:
         print("\nBuild interrupted by user", file=sys.stderr)
         sys.exit(130)
