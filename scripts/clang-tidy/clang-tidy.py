@@ -114,7 +114,8 @@ class ClangTidyBuilder:
         self.logger.info(f"Architectures: {', '.join(self.architectures)}")
         self.logger.info(f"Target: {self.target}")
 
-    def _run_command(self, cmd: List[str], cwd: Path = None, env: Dict[str, str] = None, stream_output: bool = False) -> Tuple[int, str, str]:
+    def _run_command(self, cmd: List[str], cwd: Path = None, env: Dict[str, str] = None,
+                     stream_output: bool = False) -> Tuple[int, str, str]:
         """
         Run a command and return exit code, stdout, stderr.
 
@@ -302,11 +303,11 @@ class ClangTidyBuilder:
             r'^Building dependency tree\.\.\.',
             r'^Reading state information\.\.\.',
             r'^The following.*will be.*:',
-            r'^  .*', # Indented package lists
+            r'^  .*',  # Indented package lists
             r'^Unpacking.*',
             r'^Setting up.*',
             r'^Processing triggers.*',
-            r'^/usr/bin/ninja.*', # Ninja command line
+            r'^/usr/bin/ninja.*',  # Ninja command line
             r'^ninja: Entering directory',
             r'^\s*$',  # Empty lines
         ]
@@ -506,8 +507,6 @@ class ClangTidyBuilder:
         """
         self.logger.info(f"Building {self.target} for {arch}...")
 
-        arch_config = self.ARCHITECTURES[arch]
-
         # Determine number of parallel jobs
         if self.jobs:
             parallel_jobs = self.jobs
@@ -516,7 +515,7 @@ class ClangTidyBuilder:
             try:
                 nproc = int(subprocess.check_output(['nproc'], text=True).strip())
                 parallel_jobs = max(1, nproc - 1)
-            except:
+            except subprocess.CalledProcessError:
                 parallel_jobs = 4  # fallback
 
         cmake_build_args = [
@@ -538,10 +537,9 @@ class ClangTidyBuilder:
         }
 
         docker_cmd = self._get_docker_run_cmd(arch, mount_paths)
-        # Use -c to pass the commands - first install scons, then run cmake build with unbuffered output
         cmake_cmd_str = ' '.join(f'"{arg}"' if ' ' in arg else arg for arg in cmake_build_args)
         # Use stdbuf to force line buffering - this is key for real-time streaming
-        combined_cmd = f'apt update >/dev/null 2>&1 && apt install -y scons >/dev/null 2>&1 && stdbuf -oL -eL {cmake_cmd_str}'
+        combined_cmd = f'stdbuf -oL -eL {cmake_cmd_str}'
         docker_cmd.extend(['-c', combined_cmd])
 
         self.logger.info(f"Starting build with real-time progress for {arch}...")
