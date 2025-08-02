@@ -29,6 +29,7 @@ RUN apt-get update -y && \
         wget curl ca-certificates gnupg2 lsb-release \
         python3 python3-pip python3-setuptools python3-wheel \
         pkg-config ccache \
+        scons \
         # LLVM/Clang 18
         clang-18 clang-tidy-18 clang-format-18 clang-tools-18 \
         lld-18 llvm-18-dev llvm-18-runtime \
