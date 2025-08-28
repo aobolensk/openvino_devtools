@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 
 from huggingface_hub import HfApi
-from optimum.intel.openvino import *
+from optimum.intel.openvino import *  # noqa: F403,F401
 from transformers import AutoTokenizer
 
 
@@ -68,9 +68,9 @@ def go_benchmark(model_id, text_lines, device_name="CPU"):
         end = time.perf_counter()
         total_time += (end - start)
 
-    print(f"Time: {total_time*1000:.2f} ms")
+    print(f"Time: {total_time * 1000:.2f} ms")
 
-    return [model_id, task, f"{total_time*1000:.2f}"]
+    return [model_id, task, f"{total_time * 1000:.2f}"]
 
 
 def main():
@@ -80,7 +80,7 @@ def main():
     parser.add_argument("--output", default="results.csv", help="Output CSV file (default: results.csv)")
     parser.add_argument("--device", default="CPU", help="Device for inference (default: CPU)")
     args = parser.parse_args()
-    
+
     text_lines, model_list = read_files(args.text_file, args.models_file)
     results = []
     for model in model_list:
