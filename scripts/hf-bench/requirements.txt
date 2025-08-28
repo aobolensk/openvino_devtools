@@ -1,0 +1,9 @@
+huggingface_hub
+optimum-intel[extras] @ git+https://github.com/huggingface/optimum-intel.git
+emoji
+tiktoken
+sentencepiece
+tokenizers
+transformers
+fugashi
+unidic_lite
