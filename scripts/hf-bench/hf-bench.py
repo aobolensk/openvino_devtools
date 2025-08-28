@@ -27,10 +27,9 @@ def save_results(result_file, results):
             writer.writerow(result)
 
 
-def go_benchmark(model_id, text_lines):
+def go_benchmark(model_id, text_lines, device_name="CPU"):
     py_logging.disable(py_logging.INFO)
 
-    device_name="CPU"
     info = HfApi().model_info(model_id)
     task = info.pipeline_tag
     MODEL_DIR = f"models/{model_id}"
@@ -76,15 +75,16 @@ def go_benchmark(model_id, text_lines):
 
 def main():
     parser = argparse.ArgumentParser(description="Benchmark OpenVINO inference on Hugging Face models")
-    parser.add_argument("--text-file", default="input.txt", help="Input text file (default: text.txt)")
+    parser.add_argument("--text-file", default="input.txt", help="Input text file (default: input.txt)")
     parser.add_argument("--models-file", default="models.txt", help="Models list file (default: models.txt)")
     parser.add_argument("--output", default="results.csv", help="Output CSV file (default: results.csv)")
+    parser.add_argument("--device", default="CPU", help="Device for inference (default: CPU)")
     args = parser.parse_args()
     
     text_lines, model_list = read_files(args.text_file, args.models_file)
     results = []
     for model in model_list:
-        result = go_benchmark(model, text_lines)
+        result = go_benchmark(model, text_lines, args.device)
         results.append(result)
 
     save_results(args.output, results)
