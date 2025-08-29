@@ -1,46 +1,30 @@
-# Hugging Face Benchmark
+# Hugging Face Benchmark Scripts
 
-Benchmarks OpenVINO inference performance on Hugging Face models and exports execution graphs.
+OpenVINO benchmarking tools for Hugging Face models.
 
 ## Installation
 
-```bash
-pip install optimum[openvino]
-```
-
-## Usage
+It is recommended to use separate venv for running the benchmarks
 
 ```bash
-python hf-bench.py [options]
+python3 -m pip install -r requirements.txt
 ```
 
-### Options
-- `--text-file TEXT`: Input text file (default: `input.txt`)
-- `--models-file MODELS`: Models list file (default: `models.txt`)  
-- `--output CSV`: Output CSV file (default: `results.csv`)
+## Scripts
 
-### Example
+### NLP Benchmarking (`hf-bench.py`)
+Benchmark inference performance on NLP models.
+
 ```bash
 python hf-bench.py --text-file input.txt --models-file models.txt --output results.csv
 ```
 
-## Input Files
+### Image Generation (`text2image-bench.py`)
+Generate images using Stable Diffusion models.
 
-### Text File Format
-```
-This is sample text for inference.
-Another line of text to benchmark.
-```
-
-### Models File Format (huggingface)
-```
-bert-base-uncased
-distilbert-base-uncased
-microsoft/DialoGPT-medium
+```bash
+python text2image-bench.py --text-file input.txt --models-file sd-models.txt
 ```
 
-## Output
-
-- **CSV Results**: Contains `model_id`, `task`, `inference_time_ms`
-- **Execution Graphs**: `<model-name>.xml` files for each model
-- **Model Cache**: Saved in `models/` directory
+## Options
+See `--help`
