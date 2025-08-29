@@ -7,3 +7,5 @@ tokenizers
 transformers
 fugashi
 unidic_lite
+diffusers
+accelerate
