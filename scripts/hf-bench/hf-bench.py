@@ -27,7 +27,7 @@ def save_results(result_file, results):
             writer.writerow(result)
 
 
-def go_benchmark(model_id, text_lines, device_name="CPU"):
+def go_benchmark(model_id, text_lines, device_name, precision):
     py_logging.disable(py_logging.INFO)
 
     info = HfApi().model_info(model_id)
@@ -40,16 +40,29 @@ def go_benchmark(model_id, text_lines, device_name="CPU"):
     model_class_str = info.transformersInfo["auto_model"]
     file_path = Path(MODEL_DIR) / "openvino_model.xml"
     model_class_str = model_class_str.replace("Auto", "OV")
+    PRECISION_MAP = {"FP32": "f32", "FP16": "f16", "BF16": "bf16"}
+    ov_config = {}
+    if precision is not None:
+        ov_config["INFERENCE_PRECISION_HINT"] = PRECISION_MAP[precision]
 
     # Save OpenVINO model if it has not been saved before
     if not file_path.is_file():
         model_class = eval(model_class_str)
         print(f"Saving IR model {model_id}, {model_class_str}")
-        model = model_class.from_pretrained(model_id, export=True)
+        model = model_class.from_pretrained(
+            model_id,
+            export=True,
+            device=device_name,
+            ov_config=ov_config,
+        )
         model.save_pretrained(MODEL_DIR)
 
     model_class = eval(model_class_str)
-    model = model_class.from_pretrained(MODEL_DIR)
+    model = model_class.from_pretrained(
+        MODEL_DIR,
+        device=device_name,
+        ov_config=ov_config,
+    )
 
     if device_name != "CPU":
         model.to(device_name)
@@ -79,12 +92,14 @@ def main():
     parser.add_argument("--models-file", default="models.txt", help="Models list file (default: models.txt)")
     parser.add_argument("--output", default="results.csv", help="Output CSV file (default: results.csv)")
     parser.add_argument("--device", default="CPU", help="Device for inference (default: CPU)")
+    parser.add_argument(
+        "--precision", default=None, choices=["FP32", "FP16", "BF16"], help="Inference precision (default: unspecified)")
     args = parser.parse_args()
 
     text_lines, model_list = read_files(args.text_file, args.models_file)
     results = []
     for model in model_list:
-        result = go_benchmark(model, text_lines, args.device)
+        result = go_benchmark(model, text_lines, args.device, args.precision)
         results.append(result)
 
     save_results(args.output, results)
