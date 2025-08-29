@@ -1,0 +1,3 @@
+stable-diffusion-v1-5/stable-diffusion-v1-5
+stabilityai/stable-diffusion-2-1-base
+stabilityai/stable-diffusion-3-medium-diffusers
