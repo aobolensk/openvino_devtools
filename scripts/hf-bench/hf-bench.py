@@ -93,7 +93,8 @@ def main():
     parser.add_argument("--output", default="results.csv", help="Output CSV file (default: results.csv)")
     parser.add_argument("--device", default="CPU", help="Device for inference (default: CPU)")
     parser.add_argument(
-        "--precision", default=None, choices=["FP32", "FP16", "BF16"], help="Inference precision (default: unspecified)")
+        "--precision", default=None, choices=["FP32", "FP16", "BF16"],
+        help="Inference precision (default: unspecified)")
     args = parser.parse_args()
 
     text_lines, model_list = read_files(args.text_file, args.models_file)
