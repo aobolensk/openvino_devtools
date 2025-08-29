@@ -43,7 +43,7 @@ def save_results(result_file, results):
             ])
 
 
-def generate_images(model_id, prompts, device, num_inference_steps, output_dir):
+def generate_images(model_id, prompts, device, num_inference_steps, output_dir, precision):
     """Generate images for given model and prompts."""
     print(f"Loading model: {model_id}")
 
@@ -51,12 +51,19 @@ def generate_images(model_id, prompts, device, num_inference_steps, output_dir):
     model_cache_dir = Path("models") / model_id.replace("/", "--")
     model_cache_dir.mkdir(parents=True, exist_ok=True)
 
+    # Configure precision
+    PRECISION_MAP = {"FP32": "f32", "FP16": "f16", "BF16": "bf16"}
+    ov_config = {}
+    if precision is not None:
+        ov_config["INFERENCE_PRECISION_HINT"] = PRECISION_MAP[precision]
+
     # Load or create pipeline
     start_load = time.perf_counter()
     pipe = OVStableDiffusionPipeline.from_pretrained(
         model_id,
         export=True,
-        cache_dir=str(model_cache_dir)
+        cache_dir=str(model_cache_dir),
+        ov_config=ov_config
     )
     pipe.to(device)
     end_load = time.perf_counter()
@@ -131,6 +138,12 @@ def main():
         default="results.csv",
         help="Output CSV file (default: results.csv)"
     )
+    parser.add_argument(
+        "--precision",
+        default=None,
+        choices=["FP32", "FP16", "BF16"],
+        help="Inference precision (default: unspecified)"
+    )
 
     args = parser.parse_args()
 
@@ -158,7 +171,7 @@ def main():
     for model in models:
         try:
             results = generate_images(
-                model, prompts, args.device, args.steps, args.output_dir
+                model, prompts, args.device, args.steps, args.output_dir, args.precision
             )
             all_results.extend(results)
         except Exception as e:
