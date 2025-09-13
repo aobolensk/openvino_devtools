@@ -1,0 +1,210 @@
+name: Linux RISC-V with Xuantie (Public)
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      target-branch:
+        description: 'OpenVINO target branch or ref (default: master)'
+        type: string
+        required: false
+      testFilterType:
+        description: 'Filter for google tests {SMOKE | CONCISE}'
+        required: true
+        default: 'CONCISE'
+
+permissions: read-all
+
+env:
+  TARGET_BRANCH: ${{ inputs.target-branch || 'master' }}
+  RISCV_TOOLCHAIN_ROOT: /opt/riscv
+
+jobs:
+  Build:
+    name: Build (RVV 1.0)
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    container:
+      image: ghcr.io/aobolensk/openvino_devutils/ubuntu:latest
+      options: --init
+    defaults:
+      run:
+        shell: bash
+    env:
+      CMAKE_BUILD_TYPE: 'Release'
+      CMAKE_GENERATOR: 'Ninja'
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      OPENVINO_REPO: ${{ github.workspace }}/openvino
+      BUILD_DIR: ${{ github.workspace }}/build
+      INSTALL_DIR: ${{ github.workspace }}/openvino_install
+      INSTALL_TEST_DIR: ${{ github.workspace }}/tests_install
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_TEMPDIR: ${{ github.workspace }}/.ccache_temp
+      CCACHE_MAXSIZE: 2G
+
+    steps:
+      - name: Checkout OpenVINO
+        uses: actions/checkout@v4
+        with:
+          repository: openvinotoolkit/openvino
+          ref: ${{ env.TARGET_BRANCH }}
+          path: ${{ env.OPENVINO_REPO }}
+          submodules: 'true'
+
+      - name: Show tool versions
+        run: |
+          set -x
+          uname -a || true
+          cmake --version
+          ninja --version || true
+          ccache --version || true
+          pigz --version || true
+          qemu-riscv64 --version || true
+          ls -la $RISCV_TOOLCHAIN_ROOT || true
+
+      - name: Setup ccache cache
+        uses: actions/cache@v4.2.4
+        with:
+          path: |
+            ${{ env.CCACHE_DIR }}
+          key: ${{ runner.os }}-${{ runner.arch }}-riscv-xuantie-ccache-${{ env.TARGET_BRANCH }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-riscv-xuantie-ccache-${{ env.TARGET_BRANCH }}-
+            ${{ runner.os }}-${{ runner.arch }}-riscv-xuantie-ccache-
+
+      - name: Clean ccache stats
+        run: ccache --zero-stats || true
+
+      - name: CMake - Configure
+        run: >
+          cmake -G "${{ env.CMAKE_GENERATOR }}"
+          -DENABLE_CPPLINT=OFF
+          -DENABLE_INTEL_GPU=OFF
+          -DENABLE_INTEL_NPU=OFF
+          -DENABLE_SAMPLES=OFF
+          -DENABLE_NCC_STYLE=OFF
+          -DENABLE_PYTHON=OFF
+          -DENABLE_TESTS=ON
+          -DENABLE_STRICT_DEPENDENCIES=OFF
+          -DCMAKE_VERBOSE_MAKEFILE=ON
+          -DENABLE_WHEEL=OFF
+          -DCMAKE_COMPILE_WARNING_AS_ERROR=OFF
+          -DCMAKE_TOOLCHAIN_FILE=${OPENVINO_REPO}/cmake/toolchains/riscv64-100-xuantie-gnu.toolchain.cmake
+          -S ${OPENVINO_REPO}
+          -B ${BUILD_DIR}
+
+      - name: CMake - Build
+        run: cmake --build ${BUILD_DIR} --parallel $(nproc)
+
+      - name: Show ccache stats and cleanup
+        run: |
+          ccache --show-stats || true
+          ccache --cleanup || true
+
+      - name: CMake - Install OpenVINO and tests
+        run: |
+          mkdir -p ${{ env.INSTALL_DIR }} ${{ env.INSTALL_TEST_DIR }}
+          cmake --install . --config ${{ env.CMAKE_BUILD_TYPE }} --prefix ${{ env.INSTALL_DIR }}
+          cmake --install . --config ${{ env.CMAKE_BUILD_TYPE }} --prefix ${{ env.INSTALL_TEST_DIR }} --component tests
+        working-directory: ${{ env.BUILD_DIR }}
+
+      - name: Verify directories and pack openvino_package
+        run: |
+          echo "Checking directories..."
+          ls -la ${{ env.BUILD_DIR }} || echo "BUILD_DIR does not exist"
+          ls -la ${{ env.INSTALL_DIR }} || echo "INSTALL_DIR does not exist" 
+          ls -la ${{ env.INSTALL_TEST_DIR }} || echo "INSTALL_TEST_DIR does not exist"
+          
+          if [ ! -d "${{ env.INSTALL_DIR }}" ]; then
+            echo "Error: INSTALL_DIR ${{ env.INSTALL_DIR }} does not exist"
+            exit 1
+          fi
+          
+          if [ ! -d "${{ env.BUILD_DIR }}" ]; then
+            echo "Error: BUILD_DIR ${{ env.BUILD_DIR }} does not exist"
+            exit 1
+          fi
+          
+          cd ${{ env.INSTALL_DIR }}
+          tar -cvf - * | pigz > ${{ env.BUILD_DIR }}/openvino_package.tar.gz
+
+      - name: Pack openvino_tests
+        run: |
+          if [ ! -d "${{ env.INSTALL_TEST_DIR }}" ]; then
+            echo "Error: INSTALL_TEST_DIR ${{ env.INSTALL_TEST_DIR }} does not exist"
+            exit 1
+          fi
+          
+          cd ${{ env.INSTALL_TEST_DIR }}
+          tar -cvf - * | pigz > ${{ env.BUILD_DIR }}/openvino_tests.tar.gz
+
+      - name: Upload openvino package
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: openvino_package
+          path: ${{ env.BUILD_DIR }}/openvino_package.tar.gz
+          if-no-files-found: 'error'
+
+      - name: Upload openvino tests package
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: openvino_tests
+          path: ${{ env.BUILD_DIR }}/openvino_tests.tar.gz
+          if-no-files-found: 'error'
+
+  CPU_Functional_Tests:
+    name: CPU functional tests
+    needs: [Build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    container:
+      image: ghcr.io/aobolensk/openvino_devutils/ubuntu:latest
+      options: --init
+    defaults:
+      run:
+        shell: bash
+    env:
+      INSTALL_DIR: ${{ github.workspace }}/install
+      INSTALL_TEST_DIR: ${{ github.workspace }}/install/tests
+      GTEST_FILTER: ${{ inputs.testFilterType == 'SMOKE' && '*smoke*' || '*ActivationLayer*:*EltwiseLayer*:*LogicalLayer*:*ComparisonLayer*:*SelectLayer*:*MatMulLayerCPUTest*:*ExtremumLayerCPUTest*' }}
+      RISCV_TOOLCHAIN_ROOT: /opt/riscv
+
+    steps:
+      - name: Download OpenVINO artifacts (package)
+        uses: actions/download-artifact@v4
+        with:
+          name: openvino_package
+          path: ${{ env.INSTALL_DIR }}
+
+      - name: Download OpenVINO artifacts (tests)
+        uses: actions/download-artifact@v4
+        with:
+          name: openvino_tests
+          path: ${{ env.INSTALL_DIR }}
+
+      - name: Extract OpenVINO packages and tests
+        run: |
+          pigz -dc openvino_package.tar.gz | tar -xvf - -C ${INSTALL_DIR}
+          pigz -dc openvino_tests.tar.gz | tar -xvf - -C ${INSTALL_DIR}
+        working-directory: ${{ env.INSTALL_DIR }}
+
+      - name: Intel CPU plugin func tests (parallel)
+        run: |
+          source ${{ env.INSTALL_DIR }}/setupvars.sh
+          ${{ env.RISCV_TOOLCHAIN_ROOT}}/bin/qemu-riscv64 -cpu rv64,x-v=true,vlen=256 ${{ env.INSTALL_TEST_DIR }}/ov_cpu_func_tests --gtest_print_time=1 --gtest_filter='${{ env.GTEST_FILTER }}'
+
+  Overall_Status:
+    name: ci/gha_overall_status_linux_riscv_xuantie_public
+    needs: [Build, CPU_Functional_Tests]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check status of all jobs
+        if: >-
+          ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        run: exit 1
+
