@@ -110,13 +110,33 @@ jobs:
           cmake --install . --config ${{ env.CMAKE_BUILD_TYPE }} --prefix ${{ env.INSTALL_TEST_DIR }} --component tests
         working-directory: ${{ env.BUILD_DIR }}
 
-      - name: Pack openvino_package
+      - name: Verify directories and pack openvino_package
         run: |
+          echo "Checking directories..."
+          ls -la ${{ env.BUILD_DIR }} || echo "BUILD_DIR does not exist"
+          ls -la ${{ env.INSTALL_DIR }} || echo "INSTALL_DIR does not exist" 
+          ls -la ${{ env.INSTALL_TEST_DIR }} || echo "INSTALL_TEST_DIR does not exist"
+          
+          if [ ! -d "${{ env.INSTALL_DIR }}" ]; then
+            echo "Error: INSTALL_DIR ${{ env.INSTALL_DIR }} does not exist"
+            exit 1
+          fi
+          
+          if [ ! -d "${{ env.BUILD_DIR }}" ]; then
+            echo "Error: BUILD_DIR ${{ env.BUILD_DIR }} does not exist"
+            exit 1
+          fi
+          
           cd ${{ env.INSTALL_DIR }}
           tar -cvf - * | pigz > ${{ env.BUILD_DIR }}/openvino_package.tar.gz
 
       - name: Pack openvino_tests
         run: |
+          if [ ! -d "${{ env.INSTALL_TEST_DIR }}" ]; then
+            echo "Error: INSTALL_TEST_DIR ${{ env.INSTALL_TEST_DIR }} does not exist"
+            exit 1
+          fi
+          
           cd ${{ env.INSTALL_TEST_DIR }}
           tar -cvf - * | pigz > ${{ env.BUILD_DIR }}/openvino_tests.tar.gz
 
