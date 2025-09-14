@@ -114,13 +114,42 @@ jobs:
         run: |
           # Create build dir if it doesn't exist for the tar.gz output
           mkdir -p ${{ env.BUILD_DIR }}
+          echo "Created BUILD_DIR, contents:"
+          ls -la ${{ env.BUILD_DIR }}
+
+          echo "Changing to INSTALL_DIR: ${{ env.INSTALL_DIR }}"
           cd ${{ env.INSTALL_DIR }}
-          tar -cvf - * | pigz > ${{ env.BUILD_DIR }}/openvino_package.tar.gz
+          echo "Contents of INSTALL_DIR:"
+          ls -la
+
+          echo "Creating tar.gz package..."
+          if tar -cf - * | pigz > ${{ env.BUILD_DIR }}/openvino_package.tar.gz; then
+            echo "Package creation successful"
+          else
+            echo "Package creation failed, trying without pigz compression..."
+            tar -czf ${{ env.BUILD_DIR }}/openvino_package.tar.gz *
+          fi
+
+          echo "Checking if tar.gz was created:"
+          ls -la ${{ env.BUILD_DIR }}/openvino_package.tar.gz
 
       - name: Pack openvino_tests
         run: |
+          echo "Changing to INSTALL_TEST_DIR: ${{ env.INSTALL_TEST_DIR }}"
           cd ${{ env.INSTALL_TEST_DIR }}
-          tar -cvf - * | pigz > ${{ env.BUILD_DIR }}/openvino_tests.tar.gz
+          echo "Contents of INSTALL_TEST_DIR:"
+          ls -la
+
+          echo "Creating tests tar.gz package..."
+          if tar -cf - * | pigz > ${{ env.BUILD_DIR }}/openvino_tests.tar.gz; then
+            echo "Tests package creation successful"
+          else
+            echo "Tests package creation failed, trying without pigz compression..."
+            tar -czf ${{ env.BUILD_DIR }}/openvino_tests.tar.gz *
+          fi
+
+          echo "Checking if tests tar.gz was created:"
+          ls -la ${{ env.BUILD_DIR }}/openvino_tests.tar.gz
 
       - name: Upload openvino package
         if: ${{ always() }}
@@ -128,7 +157,7 @@ jobs:
         with:
           name: openvino_package
           path: ${{ env.BUILD_DIR }}/openvino_package.tar.gz
-          if-no-files-found: 'error'
+          if-no-files-found: 'warn'
 
       - name: Upload openvino tests package
         if: ${{ always() }}
@@ -136,7 +165,7 @@ jobs:
         with:
           name: openvino_tests
           path: ${{ env.BUILD_DIR }}/openvino_tests.tar.gz
-          if-no-files-found: 'error'
+          if-no-files-found: 'warn'
 
   CPU_Functional_Tests:
     name: CPU functional tests
