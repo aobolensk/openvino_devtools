@@ -103,12 +103,14 @@ jobs:
           ccache --show-stats || true
           ccache --cleanup || true
 
-      - name: CMake - Install OpenVINO and tests
+      - name: CMake - Install OpenVINO and tests  
         run: |
+          echo "BUILD_DIR contents:"
+          ls -la ${{ env.BUILD_DIR }} || echo "BUILD_DIR does not exist"
           mkdir -p ${{ env.INSTALL_DIR }} ${{ env.INSTALL_TEST_DIR }}
+          cd ${{ env.BUILD_DIR }}
           cmake --install . --config ${{ env.CMAKE_BUILD_TYPE }} --prefix ${{ env.INSTALL_DIR }}
           cmake --install . --config ${{ env.CMAKE_BUILD_TYPE }} --prefix ${{ env.INSTALL_TEST_DIR }} --component tests
-        working-directory: ${{ env.BUILD_DIR }}
 
       - name: Pack openvino_package
         run: tar -cvf - * | pigz > ${{ env.BUILD_DIR }}/openvino_package.tar.gz
