@@ -106,49 +106,17 @@ jobs:
       - name: CMake - Install OpenVINO and tests
         run: |
           mkdir -p ${{ env.INSTALL_DIR }} ${{ env.INSTALL_TEST_DIR }}
-          cmake --install ${{ env.BUILD_DIR }} --config ${{ env.CMAKE_BUILD_TYPE }} --prefix ${{ env.INSTALL_DIR }}
-          cmake --install ${{ env.BUILD_DIR }} --config ${{ env.CMAKE_BUILD_TYPE }} --prefix ${{ env.INSTALL_TEST_DIR }} --component tests
+          cmake --install . --config ${{ env.CMAKE_BUILD_TYPE }} --prefix ${{ env.INSTALL_DIR }}
+          cmake --install . --config ${{ env.CMAKE_BUILD_TYPE }} --prefix ${{ env.INSTALL_TEST_DIR }} --component tests
+        working-directory: ${{ env.BUILD_DIR }}
 
       - name: Pack openvino_package
-        run: |
-          # Create build dir if it doesn't exist for the tar.gz output
-          mkdir -p ${{ env.BUILD_DIR }}
-          echo "Created BUILD_DIR, contents:"
-          ls -la ${{ env.BUILD_DIR }}
-
-          echo "Changing to INSTALL_DIR: ${{ env.INSTALL_DIR }}"
-          cd ${{ env.INSTALL_DIR }}
-          echo "Contents of INSTALL_DIR:"
-          ls -la
-
-          echo "Creating tar.gz package..."
-          if tar -cf - * | pigz > ${{ env.BUILD_DIR }}/openvino_package.tar.gz; then
-            echo "Package creation successful"
-          else
-            echo "Package creation failed, trying without pigz compression..."
-            tar -czf ${{ env.BUILD_DIR }}/openvino_package.tar.gz *
-          fi
-
-          echo "Checking if tar.gz was created:"
-          ls -la ${{ env.BUILD_DIR }}/openvino_package.tar.gz
+        run: tar -cvf - * | pigz > ${{ env.BUILD_DIR }}/openvino_package.tar.gz
+        working-directory: ${{ env.INSTALL_DIR }}
 
       - name: Pack openvino_tests
-        run: |
-          echo "Changing to INSTALL_TEST_DIR: ${{ env.INSTALL_TEST_DIR }}"
-          cd ${{ env.INSTALL_TEST_DIR }}
-          echo "Contents of INSTALL_TEST_DIR:"
-          ls -la
-
-          echo "Creating tests tar.gz package..."
-          if tar -cf - * | pigz > ${{ env.BUILD_DIR }}/openvino_tests.tar.gz; then
-            echo "Tests package creation successful"
-          else
-            echo "Tests package creation failed, trying without pigz compression..."
-            tar -czf ${{ env.BUILD_DIR }}/openvino_tests.tar.gz *
-          fi
-
-          echo "Checking if tests tar.gz was created:"
-          ls -la ${{ env.BUILD_DIR }}/openvino_tests.tar.gz
+        run: tar -cvf - * | pigz > ${{ env.BUILD_DIR }}/openvino_tests.tar.gz
+        working-directory: ${{ env.INSTALL_TEST_DIR }}
 
       - name: Upload openvino package
         if: ${{ always() }}
