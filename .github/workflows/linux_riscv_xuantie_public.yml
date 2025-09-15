@@ -199,8 +199,8 @@ jobs:
 
       - name: Extract OpenVINO packages and tests
         run: |
-          pigz -dc openvino_package.tar.gz | tar -xvf - -C ${INSTALL_DIR}
-          pigz -dc openvino_tests.tar.gz | tar -xvf - -C ${INSTALL_DIR}
+          pigz -dc openvino_package.tar.gz | tar -xvf -
+          pigz -dc openvino_tests.tar.gz | tar -xvf -
         working-directory: ${{ env.INSTALL_DIR }}
 
       - name: Intel CPU plugin func tests (parallel)
