@@ -2,3 +2,4 @@ models/
 output/
 *input.txt
 *.csv
+val_text.txt
