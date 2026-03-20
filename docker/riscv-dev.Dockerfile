@@ -1,6 +1,3 @@
-# Based on https://github.com/openvinotoolkit/openvino/blob/master/.github/dockerfiles/ov_build/ubuntu_22_04_riscv_xuantie/Dockerfile
-# at 2025.4.0 revision
-
 ARG REGISTRY="docker.io"
 FROM ${REGISTRY}/library/ubuntu:22.04
 
@@ -39,19 +36,18 @@ RUN apt-get update && \
         # parallel gzip
         pigz \
         # Python \
+        python3 \
         python3-dev \
-        python3-pip \
         python3-venv \
-        python3-distutils \
         # Compilers
         gcc \
         g++ \
-        # xuantie-gnu-toolchain build dependencies
+        # riscv-gnu-toolchain build dependencies
         autoconf \
         automake \
         autotools-dev \
         libmpc-dev \
-        libmpfr-dev\ 
+        libmpfr-dev \
         libgmp-dev \
         gawk \
         build-essential \
@@ -64,7 +60,10 @@ RUN apt-get update && \
         bc \
         zlib1g-dev \
         libglib2.0-dev \
+        libslirp-dev \
+        libncurses-dev \
         libexpat-dev \
+        python3-tomli \
         # For clang-tidy validation
         clang-format-18 \
         clang-tidy-18 \
@@ -105,21 +104,16 @@ RUN mkdir ${SCCACHE_HOME} && cd ${SCCACHE_HOME} && \
 
 ENV PATH="$SCCACHE_HOME:$PATH"
 
-# build xuintie toolchain
-ARG XUANTIE_VERSION="V2.8.1"
-ARG XUANTIE_REPO="https://github.com/XUANTIE-RV/xuantie-gnu-toolchain"
-ARG XUINTIE_PATH="/opt/riscv"
-ARG XUINTIE_TMP_PATH="/tmp/xuantie"
-ARG XUINTIE_SRC="/tmp/xuantie/src"
+# build riscv-collab toolchain
+ARG RISCV_GNU_TOOLCHAIN_REF="2026.03.13"
+ARG RISCV_GNU_TOOLCHAIN_REPO="https://github.com/riscv-collab/riscv-gnu-toolchain.git"
+ARG RISCV_TOOLCHAIN_PATH="/opt/riscv"
+ARG RISCV_TOOLCHAIN_TMP_PATH="/tmp/riscv-gnu-toolchain"
+ARG RISCV_TOOLCHAIN_SRC="/tmp/riscv-gnu-toolchain/src"
 
-RUN mkdir -p ${XUINTIE_TMP_PATH} && cd ${XUINTIE_TMP_PATH} && \
-    git clone --branch ${XUANTIE_VERSION} --depth 1 ${XUANTIE_REPO} ${XUINTIE_SRC} && cd ${XUINTIE_SRC} && \
-    ./configure --prefix=${XUINTIE_PATH} && \
-    make linux build-qemu -j5 && make install && \
-    rm -rf ${XUINTIE_TMP_PATH}
-
-# Setup pip
-ENV PIP_VERSION="24.0"
-RUN curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
-    python3 get-pip.py --no-cache-dir pip==${PIP_VERSION} && \
-    rm -f get-pip.py
+RUN mkdir -p ${RISCV_TOOLCHAIN_TMP_PATH} && cd ${RISCV_TOOLCHAIN_TMP_PATH} && \
+    git clone --branch ${RISCV_GNU_TOOLCHAIN_REF} --depth 1 ${RISCV_GNU_TOOLCHAIN_REPO} ${RISCV_TOOLCHAIN_SRC} && \
+    cd ${RISCV_TOOLCHAIN_SRC} && \
+    ./configure --prefix=${RISCV_TOOLCHAIN_PATH} && \
+    make -j"$(nproc)" linux build-qemu && \
+    rm -rf ${RISCV_TOOLCHAIN_TMP_PATH}
